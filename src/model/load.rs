@@ -4,8 +4,7 @@ use std::error::Error;
 use std::io::Read;
 
 use burn::{
-    config::Config,
-    module::{Module, Param},
+    module::Module,
     nn::{self, conv},
     tensor::{backend::Backend, Data, Tensor},
 };
@@ -20,8 +19,9 @@ pub fn numpy_to_tensor<B: Backend, const D: usize>(
 
     let shape: Vec<_> = v[0..D].into_iter().map(|&v| v as usize).collect();
     let data: Vec<B::FloatElem> = v[D..].into_iter().map(|e| e.elem()).collect();
+    let data: Data<B::FloatElem, D> = Data::new(data, shape.into());
 
-    Tensor::from_data_device(Data::new(data, shape.into()), device)
+    Tensor::from_data(data, device)
 }
 
 pub fn load_tensor<B: Backend, const D: usize>(

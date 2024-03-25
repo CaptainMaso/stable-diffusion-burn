@@ -1,7 +1,8 @@
+use burn::tensor::backend::Backend;
 use burn::tensor::ops::FloatTensor;
 use burn::tensor::{activation::softmax, Tensor};
 
-pub trait Backend: burn::tensor::backend::Backend {
+pub trait SDBackend: Backend {
     fn qkv_attention(
         q: FloatTensor<Self, 3>,
         k: FloatTensor<Self, 3>,
@@ -25,61 +26,74 @@ pub trait Backend: burn::tensor::backend::Backend {
 }
 
 //use burn::tensor::ops::;
-use burn::tensor::{Device, Float};
-use burn_tch::{self, TchElement, TchTensor};
-use tch;
 
-impl<E: TchElement> Backend for burn_tch::LibTorch<E> {
-    fn qkv_attention(
-        q: FloatTensor<Self, 3>,
-        k: FloatTensor<Self, 3>,
-        v: FloatTensor<Self, 3>,
-        mask: Option<FloatTensor<Self, 2>>,
-        n_head: usize,
-    ) -> FloatTensor<Self, 3> {
-        let q = Tensor::from_primitive(q);
-        let k = Tensor::from_primitive(k);
-        let v = Tensor::from_primitive(v);
+#[cfg(feature = "torch-backend")]
+mod torch_impl {
+    use super::*;
+    use burn_tch::{TchElement, TchTensor};
+    use tch;
 
-        let [n_batch, q_ctx, n_state] = q.dims();
-        let [_, k_ctx, _] = k.dims();
-        let n_hstate = n_state / n_head;
+    impl<E: TchElement> SDBackend for burn_tch::LibTorch<E> {
+        fn qkv_attention(
+            q: FloatTensor<Self, 3>,
+            k: FloatTensor<Self, 3>,
+            v: FloatTensor<Self, 3>,
+            mask: Option<FloatTensor<Self, 2>>,
+            n_head: usize,
+        ) -> FloatTensor<Self, 3> {
+            let q = Tensor::from_primitive(q);
+            let k = Tensor::from_primitive(k);
+            let v = Tensor::from_primitive(v);
 
-        let rearrange = |t: Tensor<Self, 3>| {
-            let [_, n_ctx, _] = t.dims();
-            t.reshape([n_batch, n_ctx, n_head, n_hstate])
-                .swap_dims(1, 2)
-        };
+            let [n_batch, q_ctx, n_state] = q.dims();
+            let [_, k_ctx, _] = k.dims();
+            let n_hstate = n_state / n_head;
 
-        let q = rearrange(q).into_primitive();
-        let k = rearrange(k).into_primitive();
-        let v = rearrange(v).into_primitive();
+            let rearrange = |t: Tensor<Self, 3>| {
+                let [_, n_ctx, _] = t.dims();
+                t.reshape([n_batch, n_ctx, n_head, n_hstate])
+                    .swap_dims(1, 2)
+            };
 
-        // for some reason torch crashes when mask is None
-        let mask = mask.unwrap_or_else(|| {
-            Tensor::<Self, 2, Float>::zeros([q_ctx, k_ctx], &Default::default()).into_primitive()
-        });
+            let q = rearrange(q).into_primitive();
+            let k = rearrange(k).into_primitive();
+            let v = rearrange(v).into_primitive();
 
-        Tensor::<Self, 4>::from_primitive(TchTensor::new(
-            tch::Tensor::scaled_dot_product_attention(
-                &q.tensor,
-                &k.tensor,
-                &v.tensor,
-                Some(mask.tensor),
-                0.0,
-                false,
-                None,
-            ),
-        ))
-        .swap_dims(1, 2)
-        .flatten(2, 3)
-        .into_primitive()
+            // for some reason torch crashes when mask is None
+            let mask = mask.unwrap_or_else(|| {
+                Tensor::<Self, 2, burn::tensor::Float>::zeros([q_ctx, k_ctx], &Default::default())
+                    .into_primitive()
+            });
+
+            Tensor::<Self, 4>::from_primitive(TchTensor::new(
+                tch::Tensor::scaled_dot_product_attention(
+                    &q.tensor,
+                    &k.tensor,
+                    &v.tensor,
+                    Some(mask.tensor),
+                    0.0,
+                    false,
+                    None,
+                ),
+            ))
+            .swap_dims(1, 2)
+            .flatten(2, 3)
+            .into_primitive()
+        }
     }
+}
+
+impl<G, I, F> SDBackend for burn_wgpu::Wgpu<G, F, I>
+where
+    G: burn_wgpu::GraphicsApi,
+    I: burn_wgpu::IntElement,
+    F: burn_wgpu::FloatElement,
+{
 }
 
 use burn_autodiff;
 
-impl<B: Backend, C: burn_autodiff::checkpoint::strategy::CheckpointStrategy> Backend
+impl<B: SDBackend, C: burn_autodiff::checkpoint::strategy::CheckpointStrategy> SDBackend
     for burn_autodiff::Autodiff<B, C>
 {
 }

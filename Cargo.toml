@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
+default = ["wgpu-backend"]
 wgpu-backend = ["burn-wgpu"]
 torch-backend = ["burn-tch", "tch"]
 
@@ -35,3 +36,5 @@ tch = { version = "0.15.0", optional = true}
 npy = { version = "0.4.0"}
 
 rust_tokenizers = "8.1.1"
+rayon = "1.10.0"
+itertools = "0.12.1"

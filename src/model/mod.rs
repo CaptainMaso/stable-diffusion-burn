@@ -9,3 +9,5 @@ pub mod groupnorm;
 pub mod silu;
 
 pub mod load;
+
+pub mod image;

@@ -21,8 +21,8 @@ fn timestep_embedding<B: Backend>(
     dim: usize,
     max_period: usize,
 ) -> Tensor<B, 2> {
-    let half = dim / 2;
-    let freqs = (Tensor::arange_device(0..half, &timesteps.device()).float()
+    let half = (dim / 2) as i64;
+    let freqs = (Tensor::arange(0..half, &timesteps.device()).float()
         * (-(max_period as f64).ln() / half as f64))
         .exp();
     let args = timesteps.float() * freqs;
@@ -436,7 +436,7 @@ pub struct SpatialTransformerConfig {
 
 impl SpatialTransformerConfig {
     fn init<B: Backend>(&self, device: &B::Device) -> SpatialTransformer<B> {
-        let norm = GroupNormConfig::new(32, self.n_channels).init();
+        let norm = GroupNormConfig::new(32, self.n_channels).init(device);
         let proj_in = Conv2dConfig::new([self.n_channels, self.n_channels], [1, 1]).init(device);
         let transformer =
             TransformerBlockConfig::new(self.n_channels, self.n_context_state, self.n_head)
@@ -664,7 +664,7 @@ pub struct ResBlockConfig {
 
 impl ResBlockConfig {
     fn init<B: Backend>(&self, device: &B::Device) -> ResBlock<B> {
-        let norm_in = GroupNormConfig::new(32, self.n_channels_in).init();
+        let norm_in = GroupNormConfig::new(32, self.n_channels_in).init(device);
         let silu_in = SILU::new();
         let conv_in = Conv2dConfig::new([self.n_channels_in, self.n_channels_out], [3, 3])
             .with_padding(PaddingConfig2d::Explicit(1, 1))
@@ -674,7 +674,7 @@ impl ResBlockConfig {
         let lin_embed =
             nn::LinearConfig::new(self.n_channels_embed, self.n_channels_out).init(device);
 
-        let norm_out = GroupNormConfig::new(32, self.n_channels_out).init();
+        let norm_out = GroupNormConfig::new(32, self.n_channels_out).init(device);
         let silu_out = SILU::new();
         let conv_out = Conv2dConfig::new([self.n_channels_out, self.n_channels_out], [3, 3])
             .with_padding(PaddingConfig2d::Explicit(1, 1))
